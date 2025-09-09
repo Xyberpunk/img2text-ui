@@ -66,13 +66,6 @@
         font-weight: 700;
         cursor: pointer;
       }
-      pre {
-        white-space: pre-wrap;
-        background: #0b1220;
-        border: 1px solid #1f2937;
-        padding: 12px;
-        border-radius: 8px;
-      }
       small {
         color: var(--muted);
       }
@@ -148,16 +141,22 @@
 
         <div class="row" style="margin-top: 8px">
           <button id="sumBtn">Summarize</button>
+          <button id="copySum" title="Copy summary to clipboard">Copy</button>
+          <span id="copyNote" class="pill" style="display: none">Copied!</span>
         </div>
-        <pre id="sumOut"></pre>
+        <!-- plain copyable text (not JSON) -->
+        <textarea
+          id="sumOut"
+          placeholder="Summary will appear here…"
+          readonly
+        ></textarea>
       </div>
     </div>
 
-    <!-- Set your API once here (no input field on screen).
-     IMPORTANT: If this page is on HTTPS (Vercel), API must also be HTTPS. -->
+    <!-- Set your API once here (no input on screen). If this page is on HTTPS, API must be HTTPS. -->
     <script>
-      // CHANGE THIS for production:
-      // e.g. window.API_BASE = "https://your-domain.example.com";
+      // CHANGE THIS for production if needed:
+      // window.API_BASE = "https://your-domain.example.com";
       window.API_BASE = window.API_BASE || "http://127.0.0.1:18080";
     </script>
 
@@ -185,7 +184,7 @@
         return d;
       }
 
-      // OCR → generate text
+      // OCR → generate text (plain)
       $("ocrBtn").onclick = async () => {
         const f = $("file").files[0];
         if (!f) {
@@ -208,9 +207,9 @@
         }
       };
 
-      // Summarize text
+      // Summarize text (plain string from d.summary)
       $("sumBtn").onclick = async () => {
-        $("sumOut").textContent = "Summarizing…";
+        $("sumOut").value = "Summarizing…";
         try {
           const fmt = $("fmt").value;
           const body = JSON.stringify({ text: $("text").value });
@@ -227,10 +226,26 @@
             headers: { "Content-Type": "application/json" },
             body,
           });
-          $("sumOut").textContent = JSON.stringify(d, null, 2);
+
+          // << plain text here >>
+          $("sumOut").value = d && d.summary ? d.summary : "";
         } catch (e) {
-          $("sumOut").textContent = "Error: " + e.message;
+          $("sumOut").value = "Error: " + e.message;
         }
+      };
+
+      // Copy summary
+      $("copySum").onclick = async () => {
+        const txt = $("sumOut").value || "";
+        try {
+          await navigator.clipboard.writeText(txt);
+        } catch {
+          // fallback
+          $("sumOut").select();
+          document.execCommand("copy");
+        }
+        $("copyNote").style.display = "inline-block";
+        setTimeout(() => ($("copyNote").style.display = "none"), 1200);
       };
     </script>
   </body>
