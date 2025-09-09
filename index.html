@@ -91,12 +91,13 @@
       <div class="card">
         <h2 style="margin-top: 0">Upload Image → Generate Text</h2>
         <div class="row">
-          <input id="file" type="file" accept="image/*,.pdf" />
+          <!-- Back-end expects images; PDFs are not supported here -->
+          <input id="file" type="file" accept="image/*" />
           <button id="ocrBtn">Generate Text</button>
         </div>
         <small
-          >After text is generated, it will be auto-copied below into the
-          summary box.</small
+          >After text is generated, it will be auto-copied into the box
+          below.</small
         >
         <label style="margin-top: 10px">Extracted Text</label>
         <textarea
@@ -126,10 +127,11 @@
               <input id="len" type="range" min="1" max="4" step="1" value="2" />
               <span class="pill" id="lenLabel">Medium</span>
             </div>
-            <small
-              >Length control affects <strong>bullets/markdown</strong> (sets
-              number of points). For plain text it’s ignored.</small
-            >
+            <small>
+              Controls bullet count for bullets/markdown and sends length hints
+              (mn/mx) to the model. If the server falls back to extractive mode,
+              mn/mx are ignored.
+            </small>
           </div>
         </div>
 
@@ -144,6 +146,7 @@
           <button id="copySum" title="Copy summary to clipboard">Copy</button>
           <span id="copyNote" class="pill" style="display: none">Copied!</span>
         </div>
+
         <!-- plain copyable text (not JSON) -->
         <textarea
           id="sumOut"
@@ -153,25 +156,36 @@
       </div>
     </div>
 
-    <!-- Set your API once here (no input on screen). If this page is on HTTPS, API must be HTTPS. -->
+    <!-- Configure API base:
+         - For local dev it defaults to http://127.0.0.1:18080
+         - For Vercel, set window.API_BASE on the page before this script, or hardcode below to your HTTPS API -->
     <script>
-      // CHANGE THIS for production if needed:
-      // window.API_BASE = "https://your-domain.example.com";
-      window.API_BASE = window.API_BASE || "http://127.0.0.1:18080";
+      // Example override:
+      // window.API_BASE = "https://your-api.example.com";
+      const defaultLocal =
+        location.hostname === "127.0.0.1" || location.hostname === "localhost"
+          ? "http://127.0.0.1:18080"
+          : location.origin;
+      window.API_BASE = (window.API_BASE || defaultLocal).replace(/\/+$/, "");
     </script>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const API_BASE = (window.API_BASE || "").replace(/\/+$/, "");
+      const API_BASE = window.API_BASE;
 
-      // slider label + mapping
-      const lenMap = { 1: "Short", 2: "Medium", 3: "Long", 4: "Max" };
-      const pointsMap = { 1: 3, 2: 5, 3: 7, 4: 10 };
+      // Slider presets map → label, points (for bullets), and mn/mx (HF length hints)
+      const LEN_PRESETS = {
+        1: { label: "Short", points: 3, mn: 8, mx: 60 },
+        2: { label: "Medium", points: 5, mn: 16, mx: 120 },
+        3: { label: "Long", points: 7, mn: 32, mx: 200 },
+        4: { label: "Max", points: 10, mn: 48, mx: 320 },
+      };
+
       $("len").addEventListener("input", () => {
-        $("lenLabel").textContent = lenMap[$("len").value] || "Medium";
+        const p = LEN_PRESETS[$("len").value] || LEN_PRESETS[2];
+        $("lenLabel").textContent = p.label;
       });
 
-      // helpers
       async function getJSON(url, opts) {
         const r = await fetch(url, opts);
         const t = await r.text();
@@ -188,7 +202,7 @@
       $("ocrBtn").onclick = async () => {
         const f = $("file").files[0];
         if (!f) {
-          alert("Choose an image/PDF first.");
+          alert("Choose an image first.");
           return;
         }
         $("ocrText").value = "Extracting…";
@@ -207,27 +221,26 @@
         }
       };
 
-      // Summarize text (plain string from d.summary)
+      // Summarize text (plain string from d.summary) with length hints + points
       $("sumBtn").onclick = async () => {
         $("sumOut").value = "Summarizing…";
         try {
           const fmt = $("fmt").value;
+          const preset = LEN_PRESETS[$("len").value] || LEN_PRESETS[2];
+
+          let url = `${API_BASE}/infer/text?fmt=${encodeURIComponent(fmt)}&mn=${
+            preset.mn
+          }&mx=${preset.mx}`;
+          if (fmt === "bullets" || fmt === "markdown")
+            url += `&points=${preset.points}`;
+
           const body = JSON.stringify({ text: $("text").value });
-
-          // Build URL; include &points only for bullets/markdown
-          let url = `${API_BASE}/infer/text?fmt=${encodeURIComponent(fmt)}`;
-          if (fmt === "bullets" || fmt === "markdown") {
-            const p = pointsMap[$("len").value] || 5;
-            url += `&points=${p}`;
-          }
-
           const d = await getJSON(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body,
           });
 
-          // << plain text here >>
           $("sumOut").value = d && d.summary ? d.summary : "";
         } catch (e) {
           $("sumOut").value = "Error: " + e.message;
@@ -240,7 +253,6 @@
         try {
           await navigator.clipboard.writeText(txt);
         } catch {
-          // fallback
           $("sumOut").select();
           document.execCommand("copy");
         }
