@@ -124,8 +124,8 @@
           <div style="flex: 1; min-width: 260px">
             <label>Summary length</label>
             <div class="sliderWrap">
-              <input id="len" type="range" min="1" max="4" step="1" value="2" />
-              <span class="pill" id="lenLabel">Medium</span>
+              <input id="len" type="range" min="1" max="4" step="1" value="3" />
+              <span class="pill" id="lenLabel">Long</span>
             </div>
             <small>
               Controls bullet count for bullets/markdown and sends length hints
@@ -156,22 +156,16 @@
       </div>
     </div>
 
-    <!-- Configure API base:
-         - For local dev it defaults to http://127.0.0.1:18080
-         - For Vercel, set window.API_BASE on the page before this script, or hardcode below to your HTTPS API -->
+    <!-- HARD-SET API base: REPLACE with your real public HTTPS FastAPI URL -->
     <script>
-      // Example override:
-      // window.API_BASE = "https://your-api.example.com";
-      const defaultLocal =
-        location.hostname === "127.0.0.1" || location.hostname === "localhost"
-          ? "http://127.0.0.1:18080"
-          : location.origin;
-      window.API_BASE = (window.API_BASE || defaultLocal).replace(/\/+$/, "");
+      const API_BASE = " https://bde341d16c27.ngrok-free.app ".replace(
+        /\/+$/,
+        ""
+      );
     </script>
 
     <script>
       const $ = (id) => document.getElementById(id);
-      const API_BASE = window.API_BASE;
 
       // Slider presets map → label, points (for bullets), and mn/mx (HF length hints)
       const LEN_PRESETS = {
@@ -182,7 +176,7 @@
       };
 
       $("len").addEventListener("input", () => {
-        const p = LEN_PRESETS[$("len").value] || LEN_PRESETS[2];
+        const p = LEN_PRESETS[$("len").value] || LEN_PRESETS[3];
         $("lenLabel").textContent = p.label;
       });
 
@@ -223,10 +217,15 @@
 
       // Summarize text (plain string from d.summary) with length hints + points
       $("sumBtn").onclick = async () => {
+        const src = $("text").value.trim();
+        if (!src) {
+          alert("Provide some text to summarize.");
+          return;
+        }
         $("sumOut").value = "Summarizing…";
         try {
           const fmt = $("fmt").value;
-          const preset = LEN_PRESETS[$("len").value] || LEN_PRESETS[2];
+          const preset = LEN_PRESETS[$("len").value] || LEN_PRESETS[3];
 
           let url = `${API_BASE}/infer/text?fmt=${encodeURIComponent(fmt)}&mn=${
             preset.mn
@@ -234,7 +233,7 @@
           if (fmt === "bullets" || fmt === "markdown")
             url += `&points=${preset.points}`;
 
-          const body = JSON.stringify({ text: $("text").value });
+          const body = JSON.stringify({ text: src });
           const d = await getJSON(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
