@@ -37,6 +37,7 @@
         display: flex;
         gap: 12px;
         flex-wrap: wrap;
+        align-items: center;
       }
       label {
         display: block;
@@ -75,7 +76,16 @@
       small {
         color: var(--muted);
       }
-      code {
+      .sliderWrap {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+      .pill {
+        background: #0b1220;
+        border: 1px solid #1f2937;
+        padding: 4px 8px;
+        border-radius: 999px;
         color: var(--muted);
       }
     </style>
@@ -84,24 +94,7 @@
     <div class="wrap">
       <h1>Image → Text → Summary</h1>
 
-      <!-- Health (kept, now uses a fixed API base) -->
-      <div class="card">
-        <div
-          class="row"
-          style="justify-content: space-between; align-items: center"
-        >
-          <div>
-            <strong>Backend Health</strong><br />
-            <small>Using API: <code id="apiDisplay"></code></small>
-          </div>
-          <div>
-            <button id="healthBtn">Recheck Health</button>
-          </div>
-        </div>
-        <pre id="healthOut">Click “Recheck Health”.</pre>
-      </div>
-
-      <!-- NEW: Upload image → generate text (OCR only) -->
+      <!-- Upload image → generate text (OCR only) -->
       <div class="card">
         <h2 style="margin-top: 0">Upload Image → Generate Text</h2>
         <div class="row">
@@ -109,8 +102,8 @@
           <button id="ocrBtn">Generate Text</button>
         </div>
         <small
-          >Tip: After text is generated below, it’s auto-copied into the summary
-          box for you.</small
+          >After text is generated, it will be auto-copied below into the
+          summary box.</small
         >
         <label style="margin-top: 10px">Extracted Text</label>
         <textarea
@@ -120,11 +113,12 @@
         ></textarea>
       </div>
 
-      <!-- Summarize text (unchanged, now fed by the OCR step above) -->
+      <!-- Summarize text (with length slider) -->
       <div class="card">
         <h2 style="margin-top: 0">Summarize Text</h2>
+
         <div class="row">
-          <div style="flex: 1">
+          <div style="flex: 1; min-width: 220px">
             <label>Format</label>
             <select id="fmt">
               <option value="plain">plain</option>
@@ -132,12 +126,26 @@
               <option value="markdown">markdown</option>
             </select>
           </div>
+
+          <div style="flex: 1; min-width: 260px">
+            <label>Summary length</label>
+            <div class="sliderWrap">
+              <input id="len" type="range" min="1" max="4" step="1" value="2" />
+              <span class="pill" id="lenLabel">Medium</span>
+            </div>
+            <small
+              >Length control affects <strong>bullets/markdown</strong> (sets
+              number of points). For plain text it’s ignored.</small
+            >
+          </div>
         </div>
+
         <label>Text</label>
         <textarea
           id="text"
           placeholder="Paste or use generated text from above…"
         ></textarea>
+
         <div class="row" style="margin-top: 8px">
           <button id="sumBtn">Summarize</button>
         </div>
@@ -145,7 +153,7 @@
       </div>
     </div>
 
-    <!-- Set your API once here (no input field on screen). 
+    <!-- Set your API once here (no input field on screen).
      IMPORTANT: If this page is on HTTPS (Vercel), API must also be HTTPS. -->
     <script>
       // CHANGE THIS for production:
@@ -156,8 +164,15 @@
     <script>
       const $ = (id) => document.getElementById(id);
       const API_BASE = (window.API_BASE || "").replace(/\/+$/, "");
-      $("apiDisplay").textContent = API_BASE;
 
+      // slider label + mapping
+      const lenMap = { 1: "Short", 2: "Medium", 3: "Long", 4: "Max" };
+      const pointsMap = { 1: 3, 2: 5, 3: 7, 4: 10 };
+      $("len").addEventListener("input", () => {
+        $("lenLabel").textContent = lenMap[$("len").value] || "Medium";
+      });
+
+      // helpers
       async function getJSON(url, opts) {
         const r = await fetch(url, opts);
         const t = await r.text();
@@ -170,18 +185,7 @@
         return d;
       }
 
-      // Health
-      $("healthBtn").onclick = async () => {
-        $("healthOut").textContent = "Loading…";
-        try {
-          const d = await getJSON(`${API_BASE}/health`);
-          $("healthOut").textContent = JSON.stringify(d, null, 2);
-        } catch (e) {
-          $("healthOut").textContent = "Error: " + e.message;
-        }
-      };
-
-      // OCR → generate text only
+      // OCR → generate text
       $("ocrBtn").onclick = async () => {
         const f = $("file").files[0];
         if (!f) {
@@ -198,8 +202,7 @@
           });
           const text = d && d.text ? d.text : "";
           $("ocrText").value = text || "(No text found)";
-          // also place it into the summary input for convenience
-          $("text").value = text;
+          $("text").value = text; // feed summarizer input
         } catch (e) {
           $("ocrText").value = "Error: " + e.message;
         }
@@ -209,9 +212,17 @@
       $("sumBtn").onclick = async () => {
         $("sumOut").textContent = "Summarizing…";
         try {
+          const fmt = $("fmt").value;
           const body = JSON.stringify({ text: $("text").value });
-          const fmt = encodeURIComponent($("fmt").value);
-          const d = await getJSON(`${API_BASE}/infer/text?fmt=${fmt}`, {
+
+          // Build URL; include &points only for bullets/markdown
+          let url = `${API_BASE}/infer/text?fmt=${encodeURIComponent(fmt)}`;
+          if (fmt === "bullets" || fmt === "markdown") {
+            const p = pointsMap[$("len").value] || 5;
+            url += `&points=${p}`;
+          }
+
+          const d = await getJSON(url, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body,
